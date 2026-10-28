@@ -122,6 +122,36 @@ await check('a repeated history ID is included only once inside a pending batch'
   assert.deepEqual(f.state().已转, [1, 2])
 })
 
+await check('group always skips the bot own text, image, and @ message before parsing, then remembers IDs', async f => {
+  f.messages([
+    f.message(1, { age: 2, user: '10001' }),
+    f.message(2, { age: 2, user: 10001, segments: [{ type: 'image', data: { url: 'https://multimedia.nt.qq.com.cn/own' } }] }),
+    f.message(3, { age: 2, user: 10001, segments: [{ type: 'at', data: { qq: '10001' } }, { type: 'text', data: { text: 'own mention' } }] }),
+  ])
+  const a = f.mount()
+  await a.tick()
+  assert.equal(a.calls.length, 0)
+  assert.deepEqual(f.state().已转, [1, 2, 3])
+  assert.equal(f.requests.some(([url]) => String(url).includes('multimedia.nt.qq.com.cn')), false)
+  await a.tick()
+  assert.equal(a.calls.length, 0)
+}, { group: true })
+
+await check('group listen-all still delivers other members and owner, never the bot', async f => {
+  f.messages([
+    f.message(1, { age: 2, user: 10001 }),
+    f.message(2, { age: 2, user: 123 }),
+    f.message(3, { age: 2, user: 124 }),
+  ])
+  const a = f.mount()
+  await a.tick()
+  assert.equal(a.calls.length, 1)
+  assert.match(a.calls[0].content[0].text, /synthetic-2/)
+  assert.match(a.calls[0].content[0].text, /synthetic-3/)
+  assert.doesNotMatch(a.calls[0].content[0].text, /synthetic-1/)
+  assert.deepEqual(f.state().已转, [1, 2, 3])
+}, { group: true })
+
 // ⭐ 1.0.9：群里换人**也照攒**（以前换人就切开 → 两个人说话起两轮）
 await check('group batches across senders into one followup and disposal prevents any second batch', async f => {
   f.messages([f.message(1, { age: 2 }), f.message(2, { age: 2, user: 124 })])
