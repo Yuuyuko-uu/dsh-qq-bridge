@@ -60,8 +60,13 @@ let 群消息文本 = '群里的话'
 let 群消息时间 = 1700000000
 let 群消息id = 9100
 let 群消息段 = null          // 给群消息用（跟私聊那个一样）
+let 群消息们 = null          // ⭐ 1.4.1：设了就用这一串（测「点名之后接着听」）
 let 内层节点 = null           // 「转发里套转发」用的内层节点
 let 深层节点 = null           // 1.0.3：第三层转发（fw-deep）
+let 空间列表回 = null         // ⭐ 1.4.1：QQ 空间的假回包
+let 空间详情回 = null
+let 空间动态回 = null
+const 空间请求 = []           // 打到空间那几个 action 上的请求（url + 体）
 globalThis.fetch = async (url, 选项) => {
   const 体 = JSON.parse((选项 && 选项.body) || '{}')
   const u = String(url)
@@ -81,10 +86,20 @@ globalThis.fetch = async (url, 选项) => {
     return {
       json: async () => ({
         status: 'ok', retcode: 0,
-        data: { messages: [{ user_id: 123, time: 群消息时间, message_id: 群消息id, message_type: 'group',
+        data: { messages: 群消息们 || [{ user_id: 123, time: 群消息时间, message_id: 群消息id, message_type: 'group',
           message: 群消息段 || [{ type: 'text', data: { text: 群消息文本 } }] }] },
       }),
     }
+  }
+  // ⭐ 1.4.1：QQ 空间那四个 action（回包可以按用例换）
+  if (u.includes('send_qzone_msg') || u.includes('get_qzone_msg_list')
+      || u.includes('get_qzone_msg_detail') || u.includes('get_qzone_feeds')) {
+    空间请求.push({ url: u, 体, headers: (选项 && 选项.headers) || {} })
+    if (u.includes('send_qzone_msg')) {
+      return { ok: true, json: async () => ({ status: 'ok', retcode: 0, data: { tid: 'tid-9988' } }) }
+    }
+    const 回 = u.includes('get_qzone_msg_list') ? 空间列表回 : (u.includes('get_qzone_msg_detail') ? 空间详情回 : 空间动态回)
+    return { ok: true, json: async () => 回 || { status: 'ok', retcode: 0, data: {} } }
   }
   if (u.includes('multimedia.nt.qq.com.cn')) {
     return { ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3, 4]).buffer }
@@ -1293,7 +1308,7 @@ async function 重启拉取(水位值, 已转, id, time) {
     私聊消息段 = null
     私聊消息文本 = '从手机发的话'
     私聊消息们 = null
-    发送者昵称 = '小鱿鱼'
+    发送者昵称 = '阿明'
     const 序 = Math.floor(Date.now() % 1000)
     私聊消息id = 9600 + 序
     私聊消息时间 = Math.floor(Date.now() / 1000) + 1000
@@ -1307,7 +1322,233 @@ async function 重启拉取(水位值, 已转, id, time) {
   const 前2 = await 试私聊('前缀')
   报('开了「前缀」：正文里带 [QQ]', 前2.includes('[QQ] 从手机发的话'), 前2)
   const 署 = await 试私聊('署名')
-  报('开了「署名」：昵称 + 号一起带', 署.includes('小鱿鱼（789）：从手机发的话'), 署)
+  报('开了「署名」：昵称 + 号一起带', 署.includes('阿明（789）：从手机发的话'), 署)
+}
+
+// ⭐ 1.4.1：点名之后「接着听」—— 先单独喂纯函数（收 / 不收 / 条数用光 / 超时 / 关掉）
+{
+  const 判 = 模.该收这条
+  const 现在 = 1000000
+  const 点名 = 判({ 全听: false, 点名: true, 条: 3, 秒: 60, 现在 })
+  报('该收这条：点了名 → 收，并开成「还剩 3 条 / 60 秒」',
+    点名.收 === true && Boolean(点名.接听) && 点名.接听.剩 === 3 && 点名.接听.到 === 现在 + 60000, JSON.stringify(点名))
+  const 第一条 = 判({ 全听: false, 点名: false, 接听: 点名.接听, 条: 3, 秒: 60, 现在: 现在 + 1000 })
+  报('该收这条：接听中的普通消息 → 收，条数减一',
+    第一条.收 === true && 第一条.用掉一条 === true && 第一条.接听.剩 === 2, JSON.stringify(第一条))
+  const 第二条 = 判({ 全听: false, 点名: false, 接听: 第一条.接听, 条: 3, 秒: 60, 现在: 现在 + 2000 })
+  const 第三条 = 判({ 全听: false, 点名: false, 接听: 第二条.接听, 条: 3, 秒: 60, 现在: 现在 + 3000 })
+  报('该收这条：最后一条接完 → 接听结束（退回只听点名）',
+    第三条.收 === true && 第三条.接听 === null, JSON.stringify(第三条))
+  const 第四条 = 判({ 全听: false, 点名: false, 接听: 第三条.接听, 条: 3, 秒: 60, 现在: 现在 + 4000 })
+  报('该收这条：条数用光之后的普通消息 → 不收', 第四条.收 === false, JSON.stringify(第四条))
+  const 超时 = 判({ 全听: false, 点名: false, 接听: 点名.接听, 条: 3, 秒: 60, 现在: 现在 + 60001 })
+  报('该收这条：过了接听时间 → 不收，状态清掉',
+    超时.收 === false && 超时.接听 === null && String(超时.原因).includes('时间'), JSON.stringify(超时))
+  const 关掉 = 判({ 全听: false, 点名: true, 条: 0, 秒: 120, 现在 })
+  报('该收这条：接听条数填 0（关掉）→ 点名那条照收，但不接着听',
+    关掉.收 === true && 关掉.接听 === null, JSON.stringify(关掉))
+  const 全听 = 判({ 全听: true, 点名: false, 接听: null, 条: 5, 秒: 120, 现在 })
+  报('该收这条：全听的群 → 照旧全收', 全听.收 === true && 全听.接听 === null, JSON.stringify(全听))
+  const 没接听 = 判({ 全听: false, 点名: false, 接听: null, 条: 5, 秒: 120, 现在 })
+  报('该收这条：没点名也没在接听 → 不收（老行为）', 没接听.收 === false, JSON.stringify(没接听))
+}
+
+// ⭐ 1.5.0：定时发说说的纯函数 —— 本地时间命中 / 今天发过 / 没到点 / 那条关着 / 没有定时
+{
+  const 判 = 模.该发说说
+  // 用本地时间构造这一刻（宿主也是按本地时间比的，别拿 Date.UTC 去喂）
+  const 现在 = new Date(2026, 9, 30, 9, 30, 0).getTime()
+  const 表 = [{ 时: '09:30', 权: 1, 开: true }, { 时: '18:00', 权: 4, 开: true }]
+  const 中 = 判(表, 现在, new Set())
+  报('该发说说：命中且今天没发过 → 发，带回行号和键',
+    中.发 === true && 中.行 === 0 && 中.键 === '2026-10-30 09:30', JSON.stringify(中))
+  const 发过 = 判(表, 现在, ['2026-10-30 09:30'])
+  报('该发说说：命中但今天发过 → 不再发（键照样指回那条）',
+    发过.发 === false && 发过.行 === 0 && String(发过.原因).includes('已经发过'), JSON.stringify(发过))
+  const 没到 = 判([{ 时: '10:31', 权: 1, 开: true }], 现在, new Set())
+  报('该发说说：没到点 → 不发', 没到.发 === false && 没到.行 === -1, JSON.stringify(没到))
+  const 关着 = 判([{ 时: '09:30', 权: 1, 开: false }], 现在, new Set())
+  报('该发说说：那条关着 → 不发', 关着.发 === false && String(关着.原因).includes('关着'), JSON.stringify(关着))
+  const 空表 = 判([], 现在, new Set())
+  报('该发说说：定时表是空的 → 不发', 空表.发 === false && 空表.行 === -1, JSON.stringify(空表))
+  const 单数 = 判([{ 时: '9:30', 权: 1, 开: true }], 现在, new Set())
+  报('该发说说：没补零的时间也认（9:30）', 单数.发 === true, JSON.stringify(单数))
+}
+
+// ⭐ 1.4.1：被点名之后，同一个群后面紧跟着的普通消息也放进来（接够条数就停）
+{
+  const 睡 = (毫秒) => new Promise((r) => setTimeout(r, 毫秒))
+  writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
+    总开关: true, 试运行: false, 群里听所有人: false, 合并窗口秒: 0, 补投窗口分: 60,
+    点名后接听条: 2, 点名后接听秒: 60, NapCat: 'http://127.0.0.1:3000',
+    绑定: [{ 类型: '群', 号码: '654', 会话: 'session-G', 称呼: '群里的人' }],
+  }, null, 2), 'utf8')
+  群消息们 = []
+  await 轮询回调()                 // 先给这个群记个水位（从此刻开始算）
+  const 现在 = Math.floor(Date.now() / 1000)
+  const 句 = (文) => [{ type: 'text', data: { text: 文 } }]
+  const 群条 = (id, 秒, 段) => ({ user_id: 456, time: 秒, message_id: id, message_type: 'group', message: 段 })
+  const 点名段 = [{ type: 'at', data: { qq: '10001' } }, { type: 'text', data: { text: '在吗' } }]
+  const 前 = 转进的.length
+
+  群消息们 = [群条(9701, 现在 + 10, 点名段)]
+  await 轮询回调()
+  await 睡(40)
+  报('被 @ 之后：点名那条照常转进来', 转进的.length === 前 + 1, '转进 ' + (转进的.length - 前))
+  报('被 @ 之后：这个群开成「接着听 2 条」', 桥.测试.接听('654')?.剩 === 2, JSON.stringify(桥.测试.接听('654')))
+
+  群消息们 = [群条(9702, 现在 + 11, 句('接着说第一句'))]
+  await 轮询回调()
+  await 睡(40)
+  报('接听中：普通消息也转进来（1/2）',
+    转进的.length === 前 + 2 && String(转进的.at(-1).content[0].text).includes('接着说第一句'), '转进 ' + (转进的.length - 前))
+  报('接听中：每收一条就减一条', 桥.测试.接听('654')?.剩 === 1, JSON.stringify(桥.测试.接听('654')))
+
+  群消息们 = [群条(9703, 现在 + 12, 句('接着说第二句'))]
+  await 轮询回调()
+  await 睡(40)
+  报('接听中：第二条也转进来（2/2）',
+    转进的.length === 前 + 3 && String(转进的.at(-1).content[0].text).includes('接着说第二句'), '转进 ' + (转进的.length - 前))
+  报('接够条数之后：退回「只听点名」', 桥.测试.接听('654') === null, JSON.stringify(桥.测试.接听('654')))
+
+  群消息们 = [群条(9704, 现在 + 13, 句('没人叫你的话'))]
+  await 轮询回调()
+  await 睡(40)
+  报('条数用光之后的普通消息：不再转进来', 转进的.length === 前 + 3, '转进 ' + (转进的.length - 前))
+
+  群消息们 = [群条(9705, 现在 + 14, 点名段)]
+  await 轮询回调()
+  await 睡(40)
+  报('再被点名 → 又开成接听', 桥.测试.接听('654')?.剩 === 2, JSON.stringify(桥.测试.接听('654')))
+  群消息们 = null
+}
+
+// ⭐ 1.4.1：QQ 空间的四个工具（看说说 / 看详情 / 好友动态 / 发说说）
+{
+  // 先清空绑定让空间工具卸下来，再挂回去 —— 挂过一次就不重复挂，不复位一下拿不到新对象
+  writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
+    总开关: true, 试运行: false, NapCat: 'http://127.0.0.1:3000', 绑定: [],
+  }, null, 2), 'utf8')
+  await 轮询回调()
+  writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
+    总开关: true, 试运行: false, NapCat: 'http://127.0.0.1:3000', 允许发空间动态: false,
+    绑定: [{ 类型: '私聊', 号码: '123', 会话: 'session-X' }],
+  }, null, 2), 'utf8')
+  注册的工具.length = 0
+  await 轮询回调()
+  const 找工具 = (名) => 注册的工具.find((x) => x.name === 名)
+  const 四个 = ['qq_space_list', 'qq_space_detail', 'qq_space_feeds', 'qq_space_post']
+  报('QQ 空间的四个工具都挂上了', 四个.every((名) => Boolean(找工具(名))), 注册的工具.map((x) => x.name).join(','))
+  报('空间工具的 parameters 是完整 JSON Schema、并且声明了 output',
+    四个.every((名) => {
+      const t = 找工具(名)
+      return Boolean(t) && t.parameters && t.parameters.type === 'object'
+        && t.output && t.output.schema && typeof t.output.render === 'function'
+    }), 四个.map((名) => String(找工具(名) && 找工具(名).parameters && 找工具(名).parameters.type)).join(','))
+
+  // ① 闸关着：一调就说没开，一个请求都不发
+  const 发说说 = 找工具('qq_space_post')
+  空间请求.length = 0
+  const 关着 = await 发说说.execute({ content: '这条不该发出去' })
+  报('发说说：闸关着 → 明说没开', 关着.ok === false && /没开|关着/.test(String(关着.说)), JSON.stringify(关着))
+  报('发说说：闸关着 → 真的一个请求都没发', 空间请求.length === 0, JSON.stringify(空间请求.map((x) => x.url)))
+
+  // ② 闸开着：真发，带回 tid
+  writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
+    总开关: true, 试运行: false, NapCat: 'http://127.0.0.1:3000', 允许发空间动态: true,
+    绑定: [{ 类型: '私聊', 号码: '123', 会话: 'session-X' }],
+  }, null, 2), 'utf8')
+  空间请求.length = 0
+  const 发了说说 = await 发说说.execute({ content: '今天的云很好看', images: ['https://x.test/a.jpg'] })
+  const 发请求 = 空间请求.find((x) => x.url.endsWith('/send_qzone_msg'))
+  报('发说说：闸开着 → 真发出去，带回 tid',
+    发了说说.ok === true && String(发了说说.说).includes('发好了') && String(发了说说.说).includes('tid-9988'), JSON.stringify(发了说说))
+  报('发说说：正文 / 配图 / 默认所有人可见都带上了',
+    Boolean(发请求) && 发请求.体.content === '今天的云很好看' && 发请求.体.ugc_right === 1 && Array.isArray(发请求.体.images),
+    JSON.stringify(发请求 && 发请求.体))
+  报('发说说：走的是同一套请求头（不另起一套）',
+    Boolean(发请求) && String(发请求.headers['user-agent'] || '') === 'dsh-qq-bridge', JSON.stringify(发请求 && 发请求.headers))
+
+  // ③ 16 / 128 没给名单 → 不发、说清原因
+  空间请求.length = 0
+  const 没名单 = await 发说说.execute({ content: '只给几个人看', ugc_right: 16 })
+  报('发说说：部分可见没给名单 → 不发并说清原因',
+    没名单.ok === false && String(没名单.说).includes('名单') && 空间请求.length === 0, JSON.stringify(没名单))
+
+  // ④ 看说说
+  空间列表回 = { status: 'ok', retcode: 0, data: { total: 2, msglist: [
+    { tid: 555, content: '第一条说说', time: 1700000000, comment_num: 3, is_private: true, images: ['a.jpg', 'b.jpg'] },
+    { tid: 556, content: '长'.repeat(300), time: 1700000100, comment_num: 0, is_private: false, images: [] },
+  ] } }
+  const 列表 = await 找工具('qq_space_list').execute({})
+  报('看说说：带回总数和每一条的 tid',
+    String(列表.说).includes('共 2 条说说') && String(列表.说).includes('tid 555') && String(列表.说).includes('tid 556'), 列表.说)
+  报('看说说：时间 / 评论数 / 私密 / 图片数都在',
+    String(列表.说).includes('评论 3') && String(列表.说).includes('私密') && String(列表.说).includes('图 2 张'), 列表.说)
+  报('看说说：长正文截断到 200 字', !String(列表.说).includes('长'.repeat(201)), '长度 ' + String(列表.说).length)
+
+  // ⑤ 空空间（retcode 100 + wording 里带 msglist:null）不是崩溃
+  空间列表回 = { status: 'failed', retcode: 100, wording: '{"retcode":100,"data":{"msglist":null}}' }
+  const 空 = await 找工具('qq_space_list').execute({})
+  报('空空间：翻译成「还没有说说」，不当成故障', 空.ok === true && String(空.说).includes('还没有说说'), JSON.stringify(空))
+
+  // ⑥ 别的错误：把后端的中文说明带出来，不吐 JSON
+  空间列表回 = { status: 'failed', retcode: 1200, wording: '这个号没登录空间' }
+  const 错 = await 找工具('qq_space_list').execute({})
+  报('被拒：把后端的中文说明带出来（不吐 JSON）', 错.ok === false && String(错.说) === '这个号没登录空间', JSON.stringify(错))
+
+  // ⑦ 好友动态：html 要去标签、压空白
+  空间动态回 = { status: 'ok', retcode: 0, data: { has_more: true, feeds: [
+    { uin: 10002, nickname: '阿甲', time: 1700000200, appid: 311, key: 'k1',
+      html: '<div class="fd"><p>今天  去看了海</p><br/><span>好蓝</span></div>' },
+  ] } }
+  const 动态 = await 找工具('qq_space_feeds').execute({})
+  报('好友动态：去掉了 HTML 标签', !String(动态.说).includes('<') && String(动态.说).includes('阿甲'), 动态.说)
+  报('好友动态：多余的空白压掉了', String(动态.说).includes('今天 去看了海 好蓝'), 动态.说)
+  报('好友动态：说了还有更多', String(动态.说).includes('还有更多'), 动态.说)
+
+  // ⑧ 一条说说的详情 + 评论
+  空间详情回 = { status: 'ok', retcode: 0, data: { tid: 555, content: '第一条说说', comment_num: 1,
+    comments: [{ uin: 10002, nickname: '阿甲', content: '好看', time: 1700000300 }] } }
+  const 详情 = await 找工具('qq_space_detail').execute({ tid: 555 })
+  报('看详情：正文和评论都出来了',
+    String(详情.说).includes('第一条说说') && String(详情.说).includes('阿甲') && String(详情.说).includes('好看'), 详情.说)
+}
+
+// ⭐ 1.5.0：配置规整 —— 空间定时发（补零 / 坏值丢掉 / 权只认 1·4·64 / 最多 12 条）、看圈分钟的上下限
+{
+  const 存配置 = async (配置) => {
+    writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify(配置, null, 2), 'utf8')
+    存储.length = 0
+    await 路由.get('/dsh-qq-bridge/save')([JSON.stringify(配置)], fakeRes)
+    return 存储[0]
+  }
+  const 基 = {
+    总开关: true, 试运行: false, NapCat: 'http://127.0.0.1:3000',
+    绑定: [{ 类型: '私聊', 号码: '123', 会话: 'session-X' }],
+  }
+  const 一次 = await 存配置({ ...基, 空间定时发: [{ 时: '9:05', 权: 4 }] })
+  const 项 = (一次 && 一次.配置 && 一次.配置.空间定时发) || []
+  报('规整：9:05 补成 09:05', 项.length === 1 && 项[0].时 === '09:05', JSON.stringify(项))
+  报('规整：权 4 留着、没写「开」默认开', 项.length === 1 && 项[0].权 === 4 && 项[0].开 === true, JSON.stringify(项))
+
+  const 坏 = await 存配置({ ...基, 空间定时发: [{ 时: '25:00', 权: 1 }, { 时: '9:5', 权: 1 }, { 时: '09:05', 权: 99 }] })
+  const 坏项 = (坏 && 坏.配置 && 坏.配置.空间定时发) || []
+  报('规整：坏时间被丢、权 99 当 1', 坏项.length === 1 && 坏项[0].时 === '09:05' && 坏项[0].权 === 1, JSON.stringify(坏项))
+
+  const 多 = []
+  for (let i = 0; i < 15; i++) 多.push({ 时: '0' + (i % 10) + ':' + String(i).padStart(2, '0'), 权: 1 })
+  const 截 = await 存配置({ ...基, 空间定时发: 多 })
+  报('规整：超过 12 条只留前 12 条', ((截 && 截.配置 && 截.配置.空间定时发) || []).length === 12,
+    String(((截 && 截.配置 && 截.配置.空间定时发) || []).length))
+
+  const 分钟 = await 存配置({ ...基, 空间看圈分: 9999, 空间看圈开: 'true', 空间点赞开: 1, 空间评论开: true })
+  报('规整：看圈分钟拉到 1440、开关只认 === true',
+    分钟.配置.空间看圈分 === 1440 && 分钟.配置.空间看圈开 === false
+      && 分钟.配置.空间点赞开 === false && 分钟.配置.空间评论开 === true,
+    JSON.stringify([分钟.配置.空间看圈分, 分钟.配置.空间看圈开, 分钟.配置.空间点赞开, 分钟.配置.空间评论开]))
+  const 低 = await 存配置({ ...基, 空间看圈分: 1 })
+  报('规整：看圈分钟低于 5 拉回 5', 低.配置.空间看圈分 === 5, String(低.配置.空间看圈分))
 }
 
 rmSync(家, { recursive: true, force: true, maxRetries: 3 })
