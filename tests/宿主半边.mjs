@@ -121,7 +121,7 @@ const 模 = await import(new URL('../lib/host.js', import.meta.url).href + '?v='
 
 // ---------- 纯函数 ----------
 报('名字导出', 模.name === 'qq-bridge', 模.name)
-报('inject = agents + sessions + sessionTitle + webServer + timer + workspaceRegistry + attachments + tools', Array.isArray(模.inject) && 模.inject.join() === 'agents,sessions,sessionTitle,webServer,timer,workspaceRegistry,attachments,tools', String(模.inject))
+报('inject = agents + sessions + sessionTitle + webServer + timer + workspaceRegistry + attachments + tools + connection', Array.isArray(模.inject) && 模.inject.join() === 'agents,sessions,sessionTitle,webServer,timer,workspaceRegistry,attachments,tools,connection', String(模.inject))
 
 const 块 = (type, text) => ({ type, text })
 const 正文 = 模.提取正文({ content: [块('reasoning', '想一下'), 块('text', '第一条\n第二条'), 块('image', ''), 块('text', '第三条')] })
@@ -172,6 +172,7 @@ const 假群agent = {
   ctx: { tools: { register: (t) => { 注册的工具.push(t); return () => { t.__卸了 = true } } } },
 }
 const ctx = {
+  connection: { admit: () => ({ peer: { principal: { kind: 'owner' } } }) }, // 设置页路由只认 owner
   on: (名字, cb) => { if (名字 === 'session/event') 监听.push(cb); return () => {} },
   effect: (fn) => { const 摘 = fn(); return () => { try { 摘 && 摘() } catch {} } },
   webServer: { register: (o) => 路由.set(o.path, o.handler) },
