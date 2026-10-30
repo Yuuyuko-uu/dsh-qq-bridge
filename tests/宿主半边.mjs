@@ -1551,6 +1551,37 @@ async function 重启拉取(水位值, 已转, id, time) {
   报('规整：看圈分钟低于 5 拉回 5', 低.配置.空间看圈分 === 5, String(低.配置.空间看圈分))
 }
 
+// 发消息超时：NapCat 收了请求却不回时，发一个() 要能自己断开，这一轮记成失败而不是一直挂着
+//   真超时是 15 秒，测试里把 AbortSignal.timeout 换成 50ms，同时记下代码要的是多少
+{
+  const 原fetch = globalThis.fetch
+  const 原超时 = AbortSignal.timeout
+  const 要过的超时 = []
+  AbortSignal.timeout = (ms) => { 要过的超时.push(ms); return 原超时.call(AbortSignal, 50) }
+  globalThis.fetch = (url, 选项) => {
+    if (/send_(private|group)_msg$/.test(String(url))) {
+      // 卡住的 NapCat：永远不回，只认 abort
+      return new Promise((_, 拒) => {
+        const 信 = 选项 && 选项.signal
+        if (信) 信.addEventListener('abort', () => 拒(new Error('aborted')))
+      })
+    }
+    return 原fetch(url, 选项)
+  }
+  const 起 = Date.now()
+  const 结果 = await Promise.race([
+    桥.发到QQ({ 总开关: true, 试运行: false, 转私聊: true, NapCat: 'http://127.0.0.1:3000', 长回复拆段: false,
+      绑定: [{ 类型: '私聊', 号码: '123', 会话: 'session-X' }] }, '卡住也要回来', [], 'session-X'),
+    new Promise((r) => setTimeout(() => r('还挂着'), 2000)),
+  ])
+  const 用时 = Date.now() - 起
+  globalThis.fetch = 原fetch
+  AbortSignal.timeout = 原超时
+  报('NapCat 不回时发消息会超时返回（不一直挂着）', 结果 !== '还挂着' && 用时 < 1500, 用时 + 'ms')
+  报('超时后这一发记成失败', Array.isArray(结果) && 结果.length > 0 && 结果.every((x) => x.ok === false), JSON.stringify(结果).slice(0, 160))
+  报('发消息用的超时是 15 秒', 要过的超时.includes(15000), JSON.stringify(要过的超时))
+}
+
 rmSync(家, { recursive: true, force: true, maxRetries: 3 })
 console.log(`\n${挂了 === 0 ? '全部通过 ✅' : `有 ${挂了} 条没过 ❌`}`)
 process.exitCode = 挂了 === 0 ? 0 : 1
