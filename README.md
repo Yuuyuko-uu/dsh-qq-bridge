@@ -68,6 +68,15 @@ dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-bridge
 
 装完**重启一次 DSH**，然后进 **设置 → 通到 QQ**。
 
+> ⚠ 用 `github:` 这种写法装的时候，包管理器会去 **clone 仓库**，所以那台机器上得有 **git**。
+> 没装 git 会报 `ERR_PNPM_GIT_FETCH_FAILED`。这种情况改用 **tarball 直链**，不用 git：
+>
+> ```bash
+> dsh plugin --profile desktop add https://codeload.github.com/Yuuyuko-uu/dsh-qq-bridge/tar.gz/refs/heads/main
+> ```
+>
+> （设置 → 插件 → 安装 那个框里也可以直接填这行地址。）
+
 > 光装插件还不够：还得有一个 QQ 后端（默认 `127.0.0.1:3000`），见下面「它依赖什么」那一节。
 
 ### 二、装完起不来？先看这个
