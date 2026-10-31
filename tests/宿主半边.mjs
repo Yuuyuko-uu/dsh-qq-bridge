@@ -597,6 +597,32 @@ await new Promise((r) => setTimeout(r, 40))
 const r2 = await 闸.execute({ reply: false })
 报('不是 QQ 叫醒的那一轮 → 门槛放行（不让它瞎判）',
   r2.ok === true && String(r2.说).includes('不是 QQ 消息叫起来'), JSON.stringify(r2))
+
+// ㉖之二 门槛判过「不接」之后，下一轮真正想说的话**不能被静默吞掉**
+//   门槛判不接是靠 cancel 停轮的，所以那一轮的 turn/end 是 **aborted**（完成 = false）。
+//   静默标记必须在**那一轮**就清掉；以前它漏到下一轮，下一轮 completed 时被当成
+//   「判定过的不接」跳过发送 —— 而且一条日志都没有，看起来就是「它回了，但群里没出现」。
+群消息文本 = '这条跟它没关系'
+群消息id = 9080
+群消息时间 = Math.floor(Date.now() / 1000) + 2000
+await 轮询回调()
+await new Promise((r) => setTimeout(r, 40))
+const r2b = await 闸.execute({ reply: false, reason: '跟我无关' })
+报('㉖之二 前置：判了一次不接', r2b.ok === true, JSON.stringify(r2b))
+监听[0](会话, 转完(30, 'aborted'))          // 门槛真停轮 = cancel，这一轮以 aborted 收尾
+await new Promise((r) => setTimeout(r, 20))
+群消息文本 = '在吗'                          // 再叫醒一次，然后正常说完一轮
+群消息id = 9081
+群消息时间 = Math.floor(Date.now() / 1000) + 3000
+await 轮询回调()
+await new Promise((r) => setTimeout(r, 40))
+发了.length = 0
+监听[0](会话, 助手消息(31, 1, [块('text', '在的')], false))
+监听[0](会话, 转完(31))
+await new Promise((r) => setTimeout(r, 40))
+报('㉖之二 判过「不接」之后，下一轮照常发出去（静默标记不带进下一轮）',
+  发了.length > 0, '发了=' + 发了.length)
+
 // ④ 把那一行的门槛取消 → 下一跳卸下来
 writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
   总开关: true, 试运行: false, NapCat: 'http://127.0.0.1:3000', 群里听所有人: true,
