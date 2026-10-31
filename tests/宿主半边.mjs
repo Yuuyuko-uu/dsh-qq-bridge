@@ -271,7 +271,7 @@ writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
 }, null, 2), 'utf8')
 
 let 收到 = await 收({ text: '宝宝你在吗' })
-报('/receive：把她的话 followup 进会话', 收到 && 收到.ok === true && 转进的.length === 1, JSON.stringify(收到))
+报('/receive：把进来那句话 followup 进会话', 收到 && 收到.ok === true && 转进的.length === 1, JSON.stringify(收到))
 if (转进的[0]) {
   const m = 转进的[0]
   const 文 = String(m.content[0].text || '')
@@ -701,6 +701,29 @@ await new Promise((r) => setTimeout(r, 40))
 await new Promise((r) => setTimeout(r, 30))
 报('「只回 QQ 唤醒」开着：QQ 叫醒的那一轮 → 正常回', 发了.length === 1, String(发了.length))
 
+// ⭐ 1.4.4：来源判断 —— 「只回 QQ 唤醒」开着时，**你亲手在 DSH 窗口里打的字**一律不推手机。
+//   以前判据只有「最近有没有 QQ 消息进来」，窗口内你手打的会被一起推出去。
+{
+  const 会话 = 假群agent.session
+  const 用户事件 = (源) => ({
+    type: 'user/message',
+    data: { message: { role: 'user', content: [块('text', '她在窗口里打的字')], source: 源 ? { kind: 源 } : undefined } },
+  })
+  桥.测试.清尾巴(会话.id)
+  桥.测试.清唤醒(会话.id)
+  桥.测试.清来源(会话.id)
+  桥.测试.记唤醒(会话.id, '群', false)      // 让「醒着」= true（刚被 QQ 叫醒过）
+  发了.length = 0
+  监听[0](会话, 用户事件(''))                // source 为空 = 她自己打的
+  监听[0](会话, 助手消息(60, 1, [块('text', '这条该留在本地')], false))
+  监听[0](会话, 转完(60))
+  await new Promise((r) => setTimeout(r, 30))
+  报('只回QQ唤醒：窗口内你自己打的字也不推手机', 发了.length === 0, String(发了.length))
+  桥.测试.清唤醒(会话.id)
+  桥.测试.清尾巴(会话.id)
+  桥.测试.清来源(会话.id)
+}
+
 // ㉙ 会话当时是死的 → 这条不丢；把它点活之后，下一跳自己就转进去了，也不会跑到别的会话
 writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
   总开关: true, 试运行: false, onlyThis: true, NapCat: 'http://127.0.0.1:3000',
@@ -773,10 +796,10 @@ const 转写关 = await 跑一遍({ 语音转写: false, 转写命令: 转写命
 报('语音转写关着 → 还是 [语音]', 转写关.includes('[语音]') && !转写关.includes('晚上吃什么'), 转写关)
 const 转写坏 = await 跑一遍({ 语音转写: true, 转写命令: 转写命令(坏ASR), 转写超时秒: 20 }, 9102, 语音段(真音频))
 报('命令失败 → 明说转写失败（不吞掉整条消息）', 转写坏.includes('转写失败') && 转写坏.includes('发你条语音'), 转写坏)
-// ⭐ 她实测报的那条：QQ 给的 file 是 https://multimedia.nt.qq.com.cn/download?appid=…
+// QQ 给的 file 是 https://multimedia.nt.qq.com.cn/download?appid=…
 const 转写链 = await 跑一遍({ 语音转写: true, 转写命令: 转写命令(假ASR), 转写超时秒: 20 }, 9103,
   语音段('https://multimedia.nt.qq.com.cn/download?appid=1407&fileid=abc&spec=0'))
-报('语音的 file 是网络地址时 → 先下载到本地再转写（她实测报的那个）', 转写链.includes('（语音）') && 转写链.includes('晚上吃什么'), 转写链)
+报('语音的 file 是网络地址时 → 先下载到本地再转写', 转写链.includes('（语音）') && 转写链.includes('晚上吃什么'), 转写链)
 const 音频目录 = join(家, 'audio')
 const 落下的 = (() => { try { return readFileSync(join(音频目录, 'qq-voice-9103.amr')).length } catch (e) { return -1 } })()
 报('下下来的音频确实落在 qq-bridge/audio 里', 落下的 === 4, String(落下的))
@@ -855,7 +878,7 @@ await new Promise((r) => setTimeout(r, 40))
 const 带块提示 = 转进的.length > 之前块 ? String(转进的.at(-1).content[0].text) : ''
 报('「只发 [QQ] 块」开着 → 转进去的消息里会说明这个约定', 带块提示.includes('[QQ]') && 带块提示.includes('块外'), 带块提示.slice(-90))
 
-// ㊱ 老的两个「转私聊/转群」开关不该再拦发送（她报的：加了群绑定，群里却收不到回复）
+// ㊱ 老的两个「转私聊/转群」开关不该再拦发送（加了一行群绑定，群里却收不到回复）
 writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
   总开关: true, 试运行: false, 转私聊: false, 转群: false, NapCat: 'http://127.0.0.1:3000',
   绑定: [{ 类型: '群', 号码: '456', 会话: 'session-G', 称呼: '群里的人' }],
@@ -1011,6 +1034,19 @@ await 路由.get('/dsh-qq-bridge/test-send')([JSON.stringify({})], 空绑回)
 报('引用我发过的消息 → 算点名', 模.识别点名([{ type: 'reply', data: { id: '777' } }], '10001', new Set(['777'])) === true)
 报('引用别人的消息 → 不算点名', 模.识别点名([{ type: 'reply', data: { id: '888' } }], '10001', new Set(['777'])) === false)
 报('普通文字 → 不算点名', 模.识别点名([{ type: 'text', data: { text: '大肥鱼在吗' } }], '10001', new Set()) === false)
+// ⭐ 1.4.4：第三个途径 —— 正文里直接叫名字也算点名（关键词留空就完全跳过）
+报('正文里叫了名字 → 算点名',
+  模.识别点名([{ type: 'text', data: { text: '让它帮我看看这个' } }], '10001', new Set(), ['它']) === true)
+报('正文里没叫名字 → 不算点名',
+  模.识别点名([{ type: 'text', data: { text: '今天天气不错' } }], '10001', new Set(), ['它']) === false)
+报('关键词留空 → 跟以前完全一样',
+  模.识别点名([{ type: 'text', data: { text: '让它帮我看看' } }], '10001', new Set(), []) === false)
+报('关键词给好几个，命中一个就算',
+  模.识别点名([{ type: 'text', data: { text: '去问鲸鲸吧' } }], '10001', new Set(), ['它', '鲸鲸']) === true)
+报('只看文字段，别的段里的字不算',
+  模.识别点名([{ type: 'image', data: { text: '鲸鲸' } }], '10001', new Set(), ['鲸鲸']) === false)
+报('没传关键词参数也不炸（老调用点照旧）',
+  模.识别点名([{ type: 'at', data: { qq: '10001' } }], '10001', new Set()) === true)
 
 //   ② 门槛：点名 / 私聊 一律放行（不让模型犹豫着判 false 把整轮停掉）
 writeFileSync(join(家, 'qq-bridge-config.json'), JSON.stringify({
@@ -1591,6 +1627,21 @@ async function 重启拉取(水位值, 已转, id, time) {
     JSON.stringify([分钟.配置.空间看圈分, 分钟.配置.空间看圈开, 分钟.配置.空间点赞开, 分钟.配置.空间评论开]))
   const 低 = await 存配置({ ...基, 空间看圈分: 1 })
   报('规整：看圈分钟低于 5 拉回 5', 低.配置.空间看圈分 === 5, String(低.配置.空间看圈分))
+
+  // ⭐ 1.4.4：按句拆 以前漏在归一化白名单外 —— 勾上、保存、前端拿返回值一覆盖就弹回去了，
+  //   磁盘上的配置里也从来没这个字段（未知字段在读的那一刻就被丢掉）。
+  const 句拆开 = await 存配置({ ...基, 按句拆: true })
+  报('规整：按句拆 存得住（以前漏在白名单外）', 句拆开.配置.按句拆 === true, String(句拆开.配置.按句拆))
+  const 句拆关 = await 存配置({ ...基, 按句拆: false })
+  报('规整：按句拆 关掉也存得住', 句拆关.配置.按句拆 === false, String(句拆关.配置.按句拆))
+
+  // ⭐ 1.4.4：点名关键词也得在白名单里，不然设置页填了保存就没了
+  const 词 = await 存配置({ ...基, 点名关键词: '鲸鲸, 它' })
+  报('规整：点名关键词 存得住', 词.配置.点名关键词 === '鲸鲸, 它', String(词.配置.点名关键词))
+
+  // ⭐ 1.4.4：自动触发也发 同样得在白名单里
+  const 自动 = await 存配置({ ...基, 自动触发也发: true })
+  报('规整：自动触发也发 存得住', 自动.配置.自动触发也发 === true, String(自动.配置.自动触发也发))
 
   // ⭐ 1.4.3：人设不再被静默截到 2000 字（以前超出的部分用户完全不知道）
   const 长文 = '设'.repeat(3000) + '结尾这三个字'
