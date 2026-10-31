@@ -1,4 +1,4 @@
-# 通到 QQ（dsh-qq-bridge）
+# 通到 QQ（dsh-qq-link）
 
 让 DSH 里的 **AI 伙伴**和 QQ 连起来：它在 DSH 里说完话，自动发到 QQ。
 
@@ -45,7 +45,7 @@
 真遇到新版对不上（比如 DSH 刚升级、插件还没跟上），提个 issue，作者会跟着改。
 
 实测对照 / 兼容范围看 [`package.json`](package.json) 里的 `engines` 和 `dsh.compatibility`；
-这一版改了什么看 [CHANGELOG.md](CHANGELOG.md)，发版记录看 [Releases](https://github.com/Yuuyuko-uu/dsh-qq-bridge/releases)。
+这一版改了什么看 [CHANGELOG.md](CHANGELOG.md)，发版记录看 [Releases](https://github.com/Yuuyuko-uu/dsh-qq-link/releases)。
 这里不写死版本号 —— 文档里钉一个数，过两天就对不上了。
 
 ## 装
@@ -57,13 +57,13 @@
 打开 **设置 → 插件 → 安装**，把这一行填进去：
 
 ```
-github:Yuuyuko-uu/dsh-qq-bridge
+github:Yuuyuko-uu/dsh-qq-link
 ```
 
 或者命令行（`--profile` 照你平时那个写，桌面端一般 `desktop`，网页端 `web`）：
 
 ```bash
-dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-bridge
+dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-link
 ```
 
 装完**重启一次 DSH**，然后进 **设置 → 通到 QQ**。
@@ -72,7 +72,7 @@ dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-bridge
 > 没装 git 会报 `ERR_PNPM_GIT_FETCH_FAILED`。这种情况改用 **tarball 直链**，不用 git：
 >
 > ```bash
-> dsh plugin --profile desktop add https://codeload.github.com/Yuuyuko-uu/dsh-qq-bridge/tar.gz/refs/heads/main
+> dsh plugin --profile desktop add https://codeload.github.com/Yuuyuko-uu/dsh-qq-link/tar.gz/refs/heads/main
 > ```
 >
 > （设置 → 插件 → 安装 那个框里也可以直接填这行地址。）
@@ -128,8 +128,8 @@ $p = "把上面 BOM=True 那一行的路径粘到这里"
 命令行（`--profile` 照你平时那个写，桌面端一般 `desktop`、网页端 `web`）：
 
 ```bash
-dsh plugin --profile desktop remove dsh-qq-bridge
-dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-bridge
+dsh plugin --profile desktop remove dsh-qq-link
+dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-link
 ```
 
 > ⚠️ **必须先卸再装**：直接装可能拿到缓存里的旧副本，装完还是老的。
